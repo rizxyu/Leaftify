@@ -3,10 +3,9 @@ module.exports = {
   command: /^(menu|help)$/, 
   type: ['Helper'],
   desc: 'Menampilkan menu utama bot.',
-  execute: ({ msg, bot, prefix }) => {
+  execute: ({ msg, bot, prefix, from }) => {
     const chatId = msg.chat.id;
-
-    // Mengelompokkan command berdasarkan type
+   let username = from.username
     const groupedCommands = global.commands.reduce((groups, command) => {
       if (command.type && Array.isArray(command.type)) {
         command.type.forEach(type => {
@@ -24,7 +23,6 @@ module.exports = {
       return groups;
     }, {});
 
-    // Membuat inline keyboard untuk navigasi tipe command
     const typeKeys = Object.keys(groupedCommands);
     const inlineKeyboard = {
       reply_markup: {
@@ -35,7 +33,6 @@ module.exports = {
       parse_mode: 'HTML',
     };
 
-    // Membuat string untuk daftar command (tanpa navigasi ke tipe tertentu)
     let commandList = '';
     for (const type in groupedCommands) {
       if (typeKeys.length > 1) continue; // Hanya tampilkan jika ada satu tipe
@@ -53,7 +50,7 @@ module.exports = {
     }
 
     // Pesan untuk menu utama
-    const mainMenuMessage = `Hai <b>${username}</b> Baru Mulai nih? Coba kamu ${commandList || 'Pilih kategori di bawah ini.'}`;
+    const mainMenuMessage = `Hai ${username}\n\nList command:\n${commandList || 'Pilih kategori di bawah ini.'}`;
 
     // Mengirim pesan menu utama
     bot.sendMessage(chatId, mainMenuMessage, inlineKeyboard);
@@ -87,9 +84,9 @@ module.exports = {
             ],
           };
 
-          // Edit pesan
+          // Edit pesan untuk tipe tertentu
           bot.editMessageText(
-            `Hai <b>${username}👋</b> Berikut List Command yang tersedia\n\n${typeCommandList}`,
+            `Hai! Kamu menggunakan prefix: ${prefix}\n\n${typeCommandList}`,
             {
               chat_id: callbackQuery.message.chat.id,
               message_id: callbackQuery.message.message_id,
@@ -100,6 +97,7 @@ module.exports = {
         }
       }
 
+      // Menangani tombol kembali ke menu utama
       if (data === 'navigate_main_menu') {
         bot.editMessageText(
           mainMenuMessage,
