@@ -77,36 +77,122 @@ async function starts() {
     animateLog();
     bot.on('message', async (msg) => {
       try {
-        console.log(msg);
-        const chatId = msg.chat.id;
-        const userId = msg.from.id;
-        const text = msg.text?.trim() || null;
-        const msgType = text ? "textMessage" : msg.sticker ? "stickerMessage" : null;
-        const from = msg.from;
-        const bahasa = from.language_code;
-        const commandRegex = /^([!\/+])(\w+)(.*)$/;
-        const isGroup = msg.chat.type === "supergroup";
-        let isAdmin = false, admins;
+      console.log(msg);
+      const chatId = msg.chat.id;
+      const userId = msg.from.id;
+      const text = msg.text?.trim() || null;
+      const msgType = text ? "textMessage" : msg.sticker ? "stickerMessage" : null;
+      const from = msg.from;
+      const bahasa = from.language_code;
+      const prefixRegex = /^([!\/+])/;
+      const commandRegex = /^([!\/+])(\w+)(.*)$/;
+      const isGroup = msg.chat.type === "supergroup"; 
+      let isAdmin, admins;
+      
+      if (isGroup) {
+        admins = await bot.getChatAdministrators(chatId);
+      } else {
+        admins = null;
+      }
+      
+      if (admins) {
+        isAdmin = admins.some(admin => admin.user.id === userId);
+      }
 
-        if (isGroup) {
-          admins = await bot.getChatAdministrators(chatId);
-          isAdmin = admins.some(admin => admin.user.id === userId);
-        }
+      let match;
+      if (text) {
+        match = text.match(commandRegex);
+      }
 
-        const match = text ? text.match(commandRegex) : null;
-        const prefix = match?.[1] || null;
-        const command = match?.[2] || null;
-        const extraText = match?.[3]?.trim() || null;
+      let prefix, command, extraText;
 
-        commandsLang(bahasa);
+      if (match) {
+        prefix = match[1];
+        command = match[2];
+        extraText = match[3].trim();
+      }
+
+      if (!prefix) {
+        console.log(`\x1b[32m[MESSAGE]\x1b[0m Type: ${msgType} ${msgType === "textMessage" ? `| text: ${msg.text} ` : ""}| From: ${from.first_name} (${from.username || "Private"})`);
+      } else {
+        console.log(`\x1b[32m[MESSAGE]\x1b[0m Type: ${msgType} ${msgType === "textMessage" ? `| Prefix: ${prefix} | Command: ${prefix + command} ` : ""}| From: ${from.first_name} (${from.username || "Private"})`);
+      }
+
+      commandsLang(bahasa); 
+      
+      // callback query handler
+      bot.on('callback_query', async (callbackQuery) => {
+        const { data } = callbackQuery;
+        const [command, ...args] = data.split(' '); 
 
         if (command) {
           const matchedCommand = global.commands.find(c => c.command.test(command));
+
           if (matchedCommand) {
-            const extra = { chatId, isAdmin, from, text: extraText, command, prefix, bahasa, isGroup };
-            await matchedCommand.execute({ msg, bot, ...extra });
+            const extra = {
+              chatId,
+              from,
+              text: args.join(' '),  //Sigma
+              command,
+              prefix: '',  // Tidak ada prefix untuk callback query
+              isGroup,
+              isAdmin,
+              bahasa
+            };
+            if (matchedCommand.execute) {
+              matchedCommand.execute({ msg: callbackQuery, bot, ...extra });
+            } else if (matchedCommand.before) {
+              matchedCommand.before({ msg: callbackQuery, bot, ...extra })
+                .then(() => {
+                  if (matchedCommand.after) matchedCommand.after({ msg: callbackQuery, bot, ...extra });
+                })
+                .catch(console.error);
+            } else if (matchedCommand.after) {
+              matchedCommand.after({ msg: callbackQuery, bot, ...extra });
+            }
+          }
+        } else global.callbackHandlers.forEach((handler) => {
+          handler.handleCallback(bot, msg, data);
+        });
+      });
+
+      // Handle normal message commands
+      if (command) {
+        try {
+        if (!global.public && !global.owner.username.includes(from.username)) {
+          return bot.sendMessage(chatId, `Bot is Under Mode Maintenance`);
+        }
+
+        const matchedCommand = global.commands.find(c => c.command.test(command));
+
+        if (matchedCommand) {
+          const extra = {
+            isGroup,
+            isAdmin,
+            chatId,
+            from,
+            text: extraText,
+            command,
+            prefix,
+            bahasa
+          };
+
+          if (matchedCommand.execute) {
+            matchedCommand.execute({ msg, bot, ...extra });
+          } else if (matchedCommand.before) {
+            matchedCommand.before({ msg, bot, ...extra }).then(() => {
+              if (matchedCommand.after) matchedCommand.after({ msg, bot, ...extra });
+            }).catch(console.error);
+          } else if (matchedCommand.after) {
+            matchedCommand.after({ msg, bot, ...extra });
           }
         }
+      
+      } catch(e) {
+        console.log(e)
+        bot.sendMessage(chatId, `Error: ${e.message}`)
+      }
+      }
       } catch (err) {
         if (err instanceof AggregateError) {
           console.error("AggregateError occurred:", err.errors);
@@ -116,33 +202,16 @@ async function starts() {
         bot.sendMessage(msg.chat.id, `An error occurred: ${err.message}`);
       }
     });
-
+  
     bot.on('inline_query', async (query) => {
-      try {
-        const { query: searchQuery } = query;
-        if (!searchQuery) return;
-        for (const handler of global.inlineHandlers) {
-          await handler.handleInlineQuery(bot, query);
-        }
-      } catch (err) {
-        console.error("Error handling inline query:", err);
-      }
+      const { id, query: searchQuery } = query;
+      if (!searchQuery) return;
+      global.inlineHandlers.forEach((handler) => {
+        handler.handleInlineQuery(bot, query);
+      });
     });
-
-    bot.on('callback_query', async (callbackQuery) => {
-      try {
-        const { data } = callbackQuery;
-        const [command, ...args] = data.split(' ');
-        const matchedCommand = global.commands.find(c => c.command.test(command));
-        if (matchedCommand) {
-          await matchedCommand.execute({ msg: callbackQuery, bot });
-        }
-      } catch (err) {
-        console.error("Error handling callback query:", err);
-      }
-    });
-  } catch (err) {
-    console.error("Critical error:", err);
+  } catch (e) {
+    console.log(e);
   }
 }
 
