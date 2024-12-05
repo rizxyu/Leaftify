@@ -4,20 +4,20 @@ const FormData = require("form-data");
 
 module.exports = {
   name: ['tiktok', "tt"],
-  command: /^tiktok(\s+\w+)?$/,  // Mendukung menu dan menu <subcommand>
+  command: /^(tt|tiktok)$/,  // Mendukung menu dan menu <subcommand>
   type: ['Downloader'],
   desc: 'mengunduh video tiktok.',
   execute: async({ msg, bot,
-          text}) => {
-   if (!text) return bot.sendMessage(msg.chat.id, `🔴 Butuh tautan tiktok`)
+          text, chatId}) => {
+   if (!text) return bot.sendMessage(chatId, `🔴 Butuh tautan tiktok`)
    const data = await ttt(text)
         if (data.data.images) {
           for (const i of data.data.images) {
-           await bot.sendPhoto(msg.chat.i)
+           await bot.sendPhoto(chatId, i)
    }
         }
-        if(!data.data.images) await bot.sendVideo(msg.chat.id, data.data.play || data.data.hd_play, { caption: "Berhasil"})
-        await bot.sendAudio(msg.chat.id, data.data.music_info.play)
+        if(!data.data.images) await bot.sendVideo(chatId, data.data.play || data.data.hd_play, { caption: "Berhasil"})
+        await bot.sendAudio(chatId, data.data.music_info.play)
   }
 };
 
